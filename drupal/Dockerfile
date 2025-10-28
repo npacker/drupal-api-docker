@@ -10,7 +10,7 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN composer require --no-interaction --update-with-dependencies --optimize-autoloader --apcu-autoloader \
-        drupal/api drupal/redis drush/drush predis/predis; \
+        drupal/api drush/drush; \
     chown -R www-data:www-data web/modules
 
 RUN mkdir -p /var/cache/php/opcache; \
@@ -23,7 +23,7 @@ RUN mkdir -p /var/cache/php/opcache; \
     echo 'opcache.file_cache_consistency_checks = 1' >> /usr/local/etc/php/conf.d/opcache-recommended.ini; \
     echo 'opcache.file_cache_fallback = 1' >> /usr/local/etc/php/conf.d/opcache-recommended.ini; \
     echo 'apc.shm_size = 1G' >> /usr/local/etc/php/conf.d/docker-php-apcu.ini; \
-    echo 'apc.enable_cli = 1' >> /usr/local/etc/php/conf.d/docker-php-apcu.ini
+    echo 'apc.enable_cli = 0' >> /usr/local/etc/php/conf.d/docker-php-apcu.ini
 
 COPY drush-site-precreate /usr/local/bin/
 

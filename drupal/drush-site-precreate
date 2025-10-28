@@ -33,21 +33,7 @@ drush_site_install()
     --account-pass="${DRUPAL_ADMIN_PASS}"
 
   drush --yes -vv pm:install \
-    api rest redis
-
-  cat >> "${SETTINGS_FILE_PATH}" <<EOL
-
-\$settings['redis.connection']['interface'] = 'Predis';
-\$settings['redis.connection']['host'] = '${DRUPAL_REDIS_HOST}';
-\$settings['redis.connection']['port'] = '${DRUPAL_REDIS_PORT}';
-\$settings['redis.connection']['timeout'] = 0;
-\$settings['container_yamls'][] = 'modules/contrib/redis/example.services.yml';
-\$settings['container_yamls'][] = 'modules/contrib/redis/redis.settings.yml';
-\$settings['queue_default'] = 'queue.redis';
-EOL
-
-  drush --yes -vv config:set system.performance \
-    cache.page.max_age 86400
+    api rest
 
   drush_cache_rebuild
 }

@@ -21,8 +21,6 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      redis:
-        condition: service_healthy
 
   mariadb:
     image: mariadb:latest
@@ -41,15 +39,5 @@ services:
       interval: 5s
       timeout: 30s
 
-  redis:
-    image: redis:latest
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: redis-cli ping | grep "PONG"
-      interval: 5s
-      timeout: 30s
-
 volumes:
   mariadb-data:
-  redis-data:
