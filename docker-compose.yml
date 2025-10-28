@@ -1,0 +1,34 @@
+
+services:
+
+  drupal:
+    build: ./drupal
+    environment:
+      DRUPAL_DB_HOST: ${DRUPAL_DB_HOST}
+      DRUPAL_DB_PORT: ${DRUPAL_DB_PORT}
+      DRUPAL_DB_NAME: ${DRUPAL_DB_NAME}
+      DRUPAL_DB_USER: ${DRUPAL_DB_USER}
+      DRUPAL_DB_PASS: ${DRUPAL_DB_PASS}
+      DRUPAL_SITE_NAME: ${DRUPAL_SITE_NAME}
+      DRUPAL_ADMIN_USER: ${DRUPAL_ADMIN_USER}
+      DRUPAL_ADMIN_PASS: ${DRUPAL_ADMIN_PASS}
+    ports:
+      - 8383:80
+    volumes:
+      - /var/www/html/sites
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${DRUPAL_DB_NAME}
+      POSTGRES_USER: ${DRUPAL_DB_USER}
+      POSTGRES_PASSWORD: ${DRUPAL_DB_PASS}
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:

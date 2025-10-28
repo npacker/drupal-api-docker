@@ -1,0 +1,107 @@
+#!/bin/bash
+set -e
+
+API_REPOSITORIES_PATH="/opt/drupal/web/sites/default/files/api_git_repositories"
+PROJECT="drupal"
+PROJECT_TITLE="Drupal"
+PROJECT_TYPE="core"
+BRANCH="11.x"
+BRANCH_TITLE="11.x"
+DIRECTORY="${API_REPOSITORIES_PATH}/${PROJECT}"
+CORE_COMPATIBILITY="11.x"
+UPDATE_FREQUENCY=2592000
+NUM_PROCESSES=8
+TIME_LIMIT=3600
+LEASE_TIME=60
+
+# Check if Drupal is bootstrapped.
+is_drupal_bootstrapped()
+{
+  drush --yes core:status --field=bootstrap | grep -q Successful
+}
+
+# Install the Drupal site.
+drush_site_install()
+{
+  set -x
+  drush --yes -vv site:install standard \
+    --db-url="pgsql://${DRUPAL_DB_USER}:${DRUPAL_DB_PASS}@${DRUPAL_DB_HOST}:${DRUPAL_DB_PORT}/${DRUPAL_DB_NAME}" \
+    --site-name="${DRUPAL_SITE_NAME}" \
+    --account-name="${DRUPAL_ADMIN_USER}" \
+    --account-pass="${DRUPAL_ADMIN_PASS}"
+  drush --yes -vv pm:install \
+    api rest
+}
+
+clone_project()
+{
+  set -x
+  git clone \
+    --depth=1 \
+    --single-branch \
+    --branch 11.x \
+    https://git.drupalcode.org/project/${PROJECT}.git \
+    $DIRECTORY
+  chown -R www-data:www-data $API_REPOSITORIES_PATH
+}
+
+build_api()
+{
+  set -x
+
+  drush --yes -vv api:upsert-branch \
+    $PROJECT \
+    $PROJECT_TITLE \
+    $PROJECT_TYPE \
+    $BRANCH \
+    $BRANCH_TITLE \
+    $DIRECTORY \
+    $CORE_COMPATIBILITY \
+    $UPDATE_FREQUENCY
+
+  { drush --yes -vv api:re-parse; drush --yes -vv core:cron; } & sleep 5
+
+  queue_size=$(drush queue:list --field=items --filter='name=api_parse_queue')
+  items_per_process=$(((queue_size + NUM_PROCESSES - 1) / NUM_PROCESSES))
+
+  for i in $(seq 1 $NUM_PROCESSES); do
+    drush --yes -vv queue:run api_parse_queue \
+      --items-limit=$items_per_process \
+      --time-limit=$TIME_LIMIT \
+      --lease-time=$LEASE_TIME \
+      &
+  done
+
+  wait
+} 
+
+# Apply Drupal database updates.
+drush_updatedb()
+{
+  set -x
+  drush --yes -vv updatedb --cache-clear=0
+}
+
+# Rebuild the Drupal site cache.
+drush_cache_rebuild()
+{
+  set -x
+  drush --yes -vv cache:rebuild
+}
+
+# Wait for postgres to be available.
+wait-for-postgres
+
+if ! is_drupal_bootstrapped; then
+  # Drupal is not boostrapped, so install it.
+  drush_site_install
+  clone_project
+  build_api
+else
+  # Drupal is bootstrapped, so run database updates and clear caches.
+  drush_updatedb
+  drush_cache_rebuild
+fi
+
+# Start the Apache webserver.
+exec apache2-foreground

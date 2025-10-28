@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+
+until pg_isready -h "$DRUPAL_DB_HOST" -p "$DRUPAL_DB_PORT" -U "$DRUPAL_DB_USER" -d "$DRUPAL_DB_NAME"; do
+  echo "Waiting for database..."
+  sleep 5
+done
