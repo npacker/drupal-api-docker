@@ -3,8 +3,9 @@ set -eEuox pipefail
 trap 'echo "ERROR at line $LINENO running: $BASH_COMMAND" >&2' ERR
 export PS4='[$$:$BASHPID] ${FUNCNAME[0]:-main} line $LINENO: '
 
-SETTINGS_FILE_PATH="/opt/drupal/web/sites/default/settings.php"
-API_REPOSITORIES_PATH="/opt/drupal/web/sites/default/files/api_git_repositories"
+DRUPAL_ROOT="/opt/drupal/web"
+SETTINGS_FILE_PATH="${DRUPAL_ROOT}/sites/default/settings.php"
+API_REPOSITORIES_PATH="${DRUPAL_ROOT}/sites/default/files/api_git_repositories"
 PROJECT="drupal"
 PROJECT_TITLE="Drupal"
 PROJECT_TYPE="core"
@@ -34,21 +35,21 @@ drush_site_install()
 
   drush --yes -vv pm:install \
     api rest
-
-  drush_cache_rebuild
 }
 
-clone_project()
+# Clone the drupal core git repository.
+clone_drupal_core()
 {
   git clone \
     --depth=1 \
     --single-branch \
-    --branch 11.x \
+    --branch "${BRANCH}" \
     https://git.drupalcode.org/project/${PROJECT}.git \
-    $DIRECTORY
-  chown -R www-data:www-data /opt/drupal/web/sites/default/files
+    "${DIRECTORY}"
+  chown -R www-data:www-data ${DRUPAL_ROOT}/sites/default/files
 }
 
+# Build the API based on the cloned repository.
 build_api()
 {
   drush --yes -vv api:upsert-branch \
@@ -62,7 +63,8 @@ build_api()
     "${UPDATE_FREQUENCY}"
 
   drush --yes -vv api:re-parse
-  drush --yes -vvv --debug core:cron
+  drush_core_cron
+  sleep 30
 
   while true; do
     queue_size=$(drush queue:list --field=items --filter='queue=api_parse_queue')
@@ -82,7 +84,14 @@ build_api()
     done
 
     wait
+    sleep 30
   done
+}
+
+# Import config.
+drush_config_import()
+{
+  drush --yes -vv config:import --partial --source=/opt/drupal/config
 }
 
 # Apply Drupal database updates.
@@ -97,16 +106,23 @@ drush_cache_rebuild()
   drush --yes -vv cache:rebuild
 }
 
+# Run cron.
+drush_core_cron()
+{
+  drush --yes -vvv --debug core:cron
+}
+
 if ! is_drupal_bootstrapped; then
   # Drupal is not boostrapped, so install it.
   drush_site_install
-  clone_project
+  clone_drupal_core
 else
   # Drupal is bootstrapped, so run database updates and clear caches.
   drush_updatedb
-  drush_cache_rebuild
 fi
 
+drush_config_import
+drush_cache_rebuild
 build_api
 
 # Start the Apache webserver.

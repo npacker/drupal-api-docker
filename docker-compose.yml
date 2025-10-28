@@ -18,6 +18,7 @@ services:
       - 8383:80
     volumes:
       - /var/www/html/sites
+      - ./drupal/config:/opt/drupal/config
     depends_on:
       mariadb:
         condition: service_healthy
