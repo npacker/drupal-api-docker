@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+SETTINGS_FILE_PATH="/opt/drupal/web/sites/default/settings.php"
 API_REPOSITORIES_PATH="/opt/drupal/web/sites/default/files/api_git_repositories"
 PROJECT="drupal"
 PROJECT_TITLE="Drupal"
@@ -10,8 +11,8 @@ BRANCH_TITLE="11.x"
 DIRECTORY="${API_REPOSITORIES_PATH}/${PROJECT}"
 CORE_COMPATIBILITY="11.x"
 UPDATE_FREQUENCY=2592000
-NUM_PROCESSES=8
-TIME_LIMIT=3600
+NUM_PROCESSES=15
+TIME_LIMIT=500
 LEASE_TIME=60
 
 # Check if Drupal is bootstrapped.
@@ -24,13 +25,31 @@ is_drupal_bootstrapped()
 drush_site_install()
 {
   set -x
+
   drush --yes -vv site:install standard \
-    --db-url="pgsql://${DRUPAL_DB_USER}:${DRUPAL_DB_PASS}@${DRUPAL_DB_HOST}:${DRUPAL_DB_PORT}/${DRUPAL_DB_NAME}" \
+    --db-url="mysql://${DRUPAL_DB_USER}:${DRUPAL_DB_PASS}@${DRUPAL_DB_HOST}:${DRUPAL_DB_PORT}/${DRUPAL_DB_NAME}" \
     --site-name="${DRUPAL_SITE_NAME}" \
     --account-name="${DRUPAL_ADMIN_USER}" \
     --account-pass="${DRUPAL_ADMIN_PASS}"
+
   drush --yes -vv pm:install \
-    api rest
+    api rest redis
+
+  cat >> "${SETTINGS_FILE_PATH}" <<EOL
+
+\$settings['redis.connection']['interface'] = 'Predis';
+\$settings['redis.connection']['host'] = '${DRUPAL_REDIS_HOST}';
+\$settings['redis.connection']['port'] = '${DRUPAL_REDIS_PORT}';
+\$settings['redis.connection']['timeout'] = 0;
+\$settings['container_yamls'][] = 'modules/contrib/redis/example.services.yml';
+\$settings['container_yamls'][] = 'modules/contrib/redis/redis.settings.yml';
+\$settings['queue_default'] = 'queue.redis';
+EOL
+
+  drush --yes -vv config:set system.performance \
+    cache.page.max_age 86400
+
+  drush_cache_rebuild
 }
 
 clone_project()
@@ -69,7 +88,7 @@ build_api()
       --items-limit=$items_per_process \
       --time-limit=$TIME_LIMIT \
       --lease-time=$LEASE_TIME \
-      &
+    &
   done
 
   wait
@@ -88,9 +107,6 @@ drush_cache_rebuild()
   set -x
   drush --yes -vv cache:rebuild
 }
-
-# Wait for postgres to be available.
-wait-for-postgres
 
 if ! is_drupal_bootstrapped; then
   # Drupal is not boostrapped, so install it.

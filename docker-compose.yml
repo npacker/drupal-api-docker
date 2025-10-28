@@ -12,23 +12,44 @@ services:
       DRUPAL_SITE_NAME: ${DRUPAL_SITE_NAME}
       DRUPAL_ADMIN_USER: ${DRUPAL_ADMIN_USER}
       DRUPAL_ADMIN_PASS: ${DRUPAL_ADMIN_PASS}
+      DRUPAL_REDIS_HOST: ${DRUPAL_REDIS_HOST}
+      DRUPAL_REDIS_PORT: ${DRUPAL_REDIS_PORT}
     ports:
       - 8383:80
     volumes:
       - /var/www/html/sites
     depends_on:
-      - postgres
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
-  postgres:
-    image: postgres:15
+  mariadb:
+    image: mariadb:latest
     environment:
-      POSTGRES_DB: ${DRUPAL_DB_NAME}
-      POSTGRES_USER: ${DRUPAL_DB_USER}
-      POSTGRES_PASSWORD: ${DRUPAL_DB_PASS}
+      MARIADB_AUTO_UPGRADE: 1
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: 1
+      MARIADB_DATABASE: ${DRUPAL_DB_NAME}
+      MARIADB_USER: ${DRUPAL_DB_USER}
+      MARIADB_PASSWORD: ${DRUPAL_DB_PASS}
     ports:
-      - 5432:5432
+      - 3306:3306
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 30s
+
+  redis:
+    image: redis:latest
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: redis-cli ping | grep "PONG"
+      interval: 5s
+      timeout: 30s
 
 volumes:
-  postgres-data:
+  mariadb-data:
+  redis-data:
