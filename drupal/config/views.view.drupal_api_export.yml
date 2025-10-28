@@ -1411,7 +1411,7 @@ display:
               alias: ''
               raw_output: false
       display_extenders: {  }
-      path: /export/api/drupal/11.x
+      path: export/api/drupal/11.x
     cache_metadata:
       max-age: -1
       contexts:

@@ -4,7 +4,6 @@ trap 'echo "ERROR at line $LINENO running: $BASH_COMMAND" >&2' ERR
 export PS4='[$$:$BASHPID] ${FUNCNAME[0]:-main} line $LINENO: '
 
 DRUPAL_ROOT="/opt/drupal/web"
-SETTINGS_FILE_PATH="${DRUPAL_ROOT}/sites/default/settings.php"
 API_REPOSITORIES_PATH="${DRUPAL_ROOT}/sites/default/files/api_git_repositories"
 PROJECT="drupal"
 PROJECT_TITLE="Drupal"
@@ -18,40 +17,12 @@ NUM_PROCESSES=8
 TIME_LIMIT=600
 LEASE_TIME=600
 
-# Check if Drupal is bootstrapped.
-is_drupal_bootstrapped()
-{
-  drush --yes core:status --field=bootstrap | grep -q Successful
-}
-
-# Install the Drupal site.
-drush_site_install()
-{
-  drush --yes -vv site:install standard \
-    --db-url="mysql://${DRUPAL_DB_USER}:${DRUPAL_DB_PASS}@${DRUPAL_DB_HOST}:${DRUPAL_DB_PORT}/${DRUPAL_DB_NAME}" \
-    --site-name="${DRUPAL_SITE_NAME}" \
-    --account-name="${DRUPAL_ADMIN_USER}" \
-    --account-pass="${DRUPAL_ADMIN_PASS}"
-
-  drush --yes -vv pm:install \
-    api rest
-}
-
-# Clone the drupal core git repository.
-clone_drupal_core()
-{
-  git clone \
-    --depth=1 \
-    --single-branch \
-    --branch "${BRANCH}" \
-    https://git.drupalcode.org/project/${PROJECT}.git \
-    "${DIRECTORY}"
-  chown -R www-data:www-data ${DRUPAL_ROOT}/sites/default/files
-}
-
 # Build the API based on the cloned repository.
-build_api()
+function process_api_queue
 {
+  local queue_size items_per_process i
+
+  # Upsert Drupal core branch.
   drush --yes -vv api:upsert-branch \
     "${PROJECT}" \
     "${PROJECT_TITLE}" \
@@ -60,22 +31,42 @@ build_api()
     "${BRANCH_TITLE}" \
     "${DIRECTORY}" \
     "${CORE_COMPATIBILITY}" \
-    "${UPDATE_FREQUENCY}"
+    "${UPDATE_FREQUENCY}" || {
+      echo "API branch upsert failed." >&2
+      return 1
+    }
 
+  # Flag all branches for re-parsing.
   drush --yes -vv api:re-parse
-  drush_core_cron
+
+  # Run cron to queue re-parse tasks.
+  drush --yes -vvv --debug core:cron
+
+  # Quiet period after cron run.
   sleep 30
 
+  # Process the API parse queue until empty.
   while true; do
-    queue_size=$(drush queue:list --field=items --filter='queue=api_parse_queue')
+    # Get the current number of items in the queue.
+    queue_size=$(drush queue:list --field=items --filter='queue=api_parse_queue' 2>/dev/null)
 
-    if [[ -z "$queue_size" ]] || [[ "$queue_size" -eq 0 ]]; then
-      break
+    # Verify drush didn't exit with an error.
+    if [ $? -ne 0 ]; then
+      echo "Failed to get API parse queue size." >&2
+      return 1
     fi
 
-    items_per_process=$(((queue_size + NUM_PROCESSES - 1) / NUM_PROCESSES))
+    # Check if queue is empty or non-existant.
+    if [[ -z "$queue_size" ]] || [[ "$queue_size" -eq 0 ]]; then
+      echo "API parse queue is empty."
+      return 0
+    fi
 
-    for i in $(seq 1 $NUM_PROCESSES); do
+    # Calculate items per process.
+    items_per_process=$(( (queue_size + NUM_PROCESSES - 1) / NUM_PROCESSES ))
+
+    # Start processing in background.
+    for i in $(seq 1 "${NUM_PROCESSES}"); do
       drush --yes -vv queue:run api_parse_queue \
         --items-limit=$items_per_process \
         --time-limit=$TIME_LIMIT \
@@ -83,47 +74,66 @@ build_api()
       &
     done
 
+    # Wait for all background jobs.
     wait
+
+    # Quiet period before next iteration.
     sleep 30
   done
 }
 
-# Import config.
-drush_config_import()
+# Check if Drupal is bootstrapped.
+function is_drupal_bootstrapped
 {
-  drush --yes -vv config:import --partial --source=/opt/drupal/config
-}
-
-# Apply Drupal database updates.
-drush_updatedb()
-{
-  drush --yes -vv updatedb --cache-clear=0
-}
-
-# Rebuild the Drupal site cache.
-drush_cache_rebuild()
-{
-  drush --yes -vv cache:rebuild
-}
-
-# Run cron.
-drush_core_cron()
-{
-  drush --yes -vvv --debug core:cron
+  drush --yes core:status --field=bootstrap | grep -q Successful
 }
 
 if ! is_drupal_bootstrapped; then
+  echo "Drupal not bootstrapped. Performing fresh installation..."
+
   # Drupal is not boostrapped, so install it.
-  drush_site_install
-  clone_drupal_core
+  drush --yes -vv site:install standard \
+    --db-url="mysql://${DRUPAL_DB_USER}:${DRUPAL_DB_PASS}@${DRUPAL_DB_HOST}:${DRUPAL_DB_PORT}/${DRUPAL_DB_NAME}" \
+    --site-name="${DRUPAL_SITE_NAME}" \
+    --account-name="${DRUPAL_ADMIN_USER}" \
+    --account-pass="${DRUPAL_ADMIN_PASS}" || {
+      echo "Drupal installation failed" >&2
+      exit 1
+    }
+
+  # Install required modules.
+  drush --yes -vv pm:install \
+    api rest || {
+      echo "Module installation failed." >&2
+      exit 1
+    }
+
+  # Clone drupal core.
+  git clone \
+    --depth=1 \
+    --single-branch \
+    --branch "${BRANCH}" \
+    "https://git.drupalcode.org/project/${PROJECT}.git" \
+    "${DIRECTORY}"
+
+  # Fix repository ownership.
+  chown -R www-data:www-data "${DIRECTORY}"
 else
-  # Drupal is bootstrapped, so run database updates and clear caches.
-  drush_updatedb
+  # Drupal is bootstrapped, so run database updates.
+  drush --yes -vv updatedb --cache-clear=0
 fi
 
-drush_config_import
-drush_cache_rebuild
-build_api
+# Import configuration mounted from ./drupal/config.
+drush --yes -vv config:import --partial --source=/opt/drupal/config
+
+# Fix file ownership.
+chown -R www-data:www-data "${DRUPAL_ROOT}/sites/default/files"
+
+# Clear the cache.
+drush --yes -vv cache:rebuild
+
+# Initiate API rebuild.
+process_api_queue
 
 # Start the Apache webserver.
 exec apache2-foreground
