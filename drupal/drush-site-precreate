@@ -1,5 +1,7 @@
 #!/bin/bash
-set -e
+set -eEuox pipefail
+trap 'echo "ERROR at line $LINENO running: $BASH_COMMAND" >&2' ERR
+export PS4='[$$:$BASHPID] ${FUNCNAME[0]:-main} line $LINENO: '
 
 SETTINGS_FILE_PATH="/opt/drupal/web/sites/default/settings.php"
 API_REPOSITORIES_PATH="/opt/drupal/web/sites/default/files/api_git_repositories"
@@ -11,9 +13,9 @@ BRANCH_TITLE="11.x"
 DIRECTORY="${API_REPOSITORIES_PATH}/${PROJECT}"
 CORE_COMPATIBILITY="11.x"
 UPDATE_FREQUENCY=2592000
-NUM_PROCESSES=15
-TIME_LIMIT=500
-LEASE_TIME=60
+NUM_PROCESSES=8
+TIME_LIMIT=600
+LEASE_TIME=600
 
 # Check if Drupal is bootstrapped.
 is_drupal_bootstrapped()
@@ -24,8 +26,6 @@ is_drupal_bootstrapped()
 # Install the Drupal site.
 drush_site_install()
 {
-  set -x
-
   drush --yes -vv site:install standard \
     --db-url="mysql://${DRUPAL_DB_USER}:${DRUPAL_DB_PASS}@${DRUPAL_DB_HOST}:${DRUPAL_DB_PORT}/${DRUPAL_DB_NAME}" \
     --site-name="${DRUPAL_SITE_NAME}" \
@@ -54,57 +54,60 @@ EOL
 
 clone_project()
 {
-  set -x
   git clone \
     --depth=1 \
     --single-branch \
     --branch 11.x \
     https://git.drupalcode.org/project/${PROJECT}.git \
     $DIRECTORY
-  chown -R www-data:www-data $API_REPOSITORIES_PATH
+  chown -R www-data:www-data /opt/drupal/web/sites/default/files
 }
 
 build_api()
 {
-  set -x
-
   drush --yes -vv api:upsert-branch \
-    $PROJECT \
-    $PROJECT_TITLE \
-    $PROJECT_TYPE \
-    $BRANCH \
-    $BRANCH_TITLE \
-    $DIRECTORY \
-    $CORE_COMPATIBILITY \
-    $UPDATE_FREQUENCY
+    "${PROJECT}" \
+    "${PROJECT_TITLE}" \
+    "${PROJECT_TYPE}" \
+    "${BRANCH}" \
+    "${BRANCH_TITLE}" \
+    "${DIRECTORY}" \
+    "${CORE_COMPATIBILITY}" \
+    "${UPDATE_FREQUENCY}"
 
-  { drush --yes -vv api:re-parse; drush --yes -vv core:cron; } & sleep 5
+  drush --yes -vv api:re-parse
+  drush --yes -vvv --debug core:cron
 
-  queue_size=$(drush queue:list --field=items --filter='name=api_parse_queue')
-  items_per_process=$(((queue_size + NUM_PROCESSES - 1) / NUM_PROCESSES))
+  while true; do
+    queue_size=$(drush queue:list --field=items --filter='queue=api_parse_queue')
 
-  for i in $(seq 1 $NUM_PROCESSES); do
-    drush --yes -vv queue:run api_parse_queue \
-      --items-limit=$items_per_process \
-      --time-limit=$TIME_LIMIT \
-      --lease-time=$LEASE_TIME \
-    &
+    if [[ -z "$queue_size" ]] || [[ "$queue_size" -eq 0 ]]; then
+      break
+    fi
+
+    items_per_process=$(((queue_size + NUM_PROCESSES - 1) / NUM_PROCESSES))
+
+    for i in $(seq 1 $NUM_PROCESSES); do
+      drush --yes -vv queue:run api_parse_queue \
+        --items-limit=$items_per_process \
+        --time-limit=$TIME_LIMIT \
+        --lease-time=$LEASE_TIME \
+      &
+    done
+
+    wait
   done
-
-  wait
-} 
+}
 
 # Apply Drupal database updates.
 drush_updatedb()
 {
-  set -x
   drush --yes -vv updatedb --cache-clear=0
 }
 
 # Rebuild the Drupal site cache.
 drush_cache_rebuild()
 {
-  set -x
   drush --yes -vv cache:rebuild
 }
 
@@ -112,12 +115,13 @@ if ! is_drupal_bootstrapped; then
   # Drupal is not boostrapped, so install it.
   drush_site_install
   clone_project
-  build_api
 else
   # Drupal is bootstrapped, so run database updates and clear caches.
   drush_updatedb
   drush_cache_rebuild
 fi
+
+build_api
 
 # Start the Apache webserver.
 exec apache2-foreground
