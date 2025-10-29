@@ -646,7 +646,7 @@ display:
             more_link_text: ''
             more_link_path: ''
             strip_tags: false
-            trim: true
+            trim: false
             preserve_tags: ''
             html: false
           element_type: ''
@@ -704,13 +704,13 @@ display:
             target: ''
             nl2br: false
             max_length: 250
-            word_boundary: true
-            ellipsis: true
+            word_boundary: false
+            ellipsis: false
             more_link: false
             more_link_text: ''
             more_link_path: ''
             strip_tags: false
-            trim: true
+            trim: false
             preserve_tags: ''
             html: false
           element_type: ''
@@ -738,6 +738,58 @@ display:
           multi_type: separator
           separator: ', '
           field_api_classes: false
+        all_service_tags:
+          id: all_service_tags
+          table: api_branch_docblock
+          field: all_service_tags
+          relationship: none
+          group_type: group
+          admin_label: ''
+          entity_type: docblock
+          plugin_id: service_tags
+          label: ''
+          exclude: false
+          alter:
+            alter_text: false
+            text: ''
+            make_link: false
+            path: ''
+            absolute: false
+            external: false
+            replace_spaces: false
+            path_case: none
+            trim_whitespace: false
+            alt: ''
+            rel: ''
+            link_class: ''
+            prefix: ''
+            suffix: ''
+            target: ''
+            nl2br: false
+            max_length: 0
+            word_boundary: true
+            ellipsis: true
+            more_link: false
+            more_link_text: ''
+            more_link_path: ''
+            strip_tags: false
+            trim: false
+            preserve_tags: ''
+            html: false
+          element_type: ''
+          element_class: ''
+          element_label_type: ''
+          element_label_class: ''
+          element_label_colon: false
+          element_wrapper_type: ''
+          element_wrapper_class: ''
+          element_default_classes: true
+          empty: ''
+          hide_empty: false
+          empty_zero: false
+          hide_alter_empty: true
+          type: separator
+          separator: ', '
         class:
           id: class
           table: api_branch_docblock
@@ -1407,7 +1459,58 @@ display:
         type: data_field
         options:
           field_options:
-            rendered_entity:
+            object_name:
+              alias: ''
+              raw_output: false
+            object_type:
+              alias: ''
+              raw_output: false
+            file_name:
+              alias: ''
+              raw_output: false
+            namespace:
+              alias: ''
+              raw_output: false
+            start_line:
+              alias: ''
+              raw_output: false
+            reference_count:
+              alias: reference_count_use_statements
+              raw_output: false
+            reference_count_1:
+              alias: reference_count_strings
+              raw_output: false
+            reference_count_2:
+              alias: reference_count_direct
+              raw_output: false
+            reference_count_3:
+              alias: reference_count_direct_namespaced
+              raw_output: false
+            code:
+              alias: ''
+              raw_output: true
+            documentation:
+              alias: ''
+              raw_output: true
+            all_service_tags:
+              alias: ''
+              raw_output: false
+            class:
+              alias: ''
+              raw_output: false
+            modifiers:
+              alias: ''
+              raw_output: false
+            var:
+              alias: variable_type
+              raw_output: false
+            throws:
+              alias: ''
+              raw_output: false
+            deprecated:
+              alias: ''
+              raw_output: false
+            see:
               alias: ''
               raw_output: false
       display_extenders: {  }
