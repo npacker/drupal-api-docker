@@ -118,22 +118,24 @@ if ! is_drupal_bootstrapped; then
 
   # Fix repository ownership.
   chown -R www-data:www-data "${DIRECTORY}"
+
+  # Initiate API parsing and build.
+  process_api_queue
+
+  # Import configuration mounted from ./drupal/config.
+  drush --yes -vv config:import --partial --source=/opt/drupal/config
 else
+  echo "Drupal is bootstrapped. Running database updates..."
+
   # Drupal is bootstrapped, so run database updates.
   drush --yes -vv updatedb --cache-clear=0
 fi
-
-# Import configuration mounted from ./drupal/config.
-drush --yes -vv config:import --partial --source=/opt/drupal/config
 
 # Fix file ownership.
 chown -R www-data:www-data "${DRUPAL_ROOT}/sites/default/files"
 
 # Clear the cache.
 drush --yes -vv cache:rebuild
-
-# Initiate API rebuild.
-process_api_queue
 
 # Start the Apache webserver.
 exec apache2-foreground

@@ -1,6 +1,26 @@
 
 services:
 
+  unsloth:
+    image: unsloth/unsloth:latest
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: 1
+    environment:
+      JUPYTER_PASSWORD: ${JUPYTER_PASSWORD}
+      UNSLOTH_USER_PASSWORD: ${UNSLOTH_USER_PASSWORD}
+    ports:
+      - 8888:8888
+      - 8000:8000
+      - 2222:22
+    volumes:
+      - ./unsloth/work:/workspace/work
+
   drupal:
     build: ./drupal
     environment:
@@ -12,8 +32,6 @@ services:
       DRUPAL_SITE_NAME: ${DRUPAL_SITE_NAME}
       DRUPAL_ADMIN_USER: ${DRUPAL_ADMIN_USER}
       DRUPAL_ADMIN_PASS: ${DRUPAL_ADMIN_PASS}
-      DRUPAL_REDIS_HOST: ${DRUPAL_REDIS_HOST}
-      DRUPAL_REDIS_PORT: ${DRUPAL_REDIS_PORT}
     ports:
       - 8383:80
     volumes:
@@ -40,5 +58,23 @@ services:
       interval: 5s
       timeout: 30s
 
+  elasticsearch:
+    image: elasticsearch:9.2.0
+    environment:
+      cluster.name: elasticsearch
+      discovery.type: single-node
+      node.name: es01
+      xpack.security.enabled: false
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    mem_limit: 10g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
 volumes:
+  elasticsearch-data:
   mariadb-data:
